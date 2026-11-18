@@ -25,8 +25,8 @@ import { ShellResult } from "../../shell/result.js"
 import { toolFailure } from "../runtime.js"
 
 export const name = "shell"
-export const DEFAULT_TIMEOUT_MS = 2 * 60 * 1_000
-const CODE_MODE_TIMEOUT_MS = 10 * 60 * 1_000
+export const DEFAULT_TIMEOUT_MS = 30 * 1_000
+const CODE_MODE_TIMEOUT_MS = DEFAULT_TIMEOUT_MS
 // How long a call the user interrupted waits for its stopped command to exit before settling with the output so far.
 const INTERRUPT_WAIT = "500 millis"
 
@@ -387,7 +387,8 @@ export const Plugin = {
             // Code Mode input has no background parameter.
             const background = "background" in input && input.background === true
             // A foreground timeout of 0 falls back to the default, so a call can't block until the command exits.
-            const foreground = input.timeout || (codeMode ? CODE_MODE_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)
+            const configuredTimeout = Config.latest(loaded.entries, "shell_background_after") ?? DEFAULT_TIMEOUT_MS
+            const foreground = input.timeout || configuredTimeout
             const timeout = background ? (input.timeout ?? 0) : foreground
             let finalTimeout = timeout
             // Uninterruptible from spawning to blocking, so an interrupt cannot orphan a started command.
