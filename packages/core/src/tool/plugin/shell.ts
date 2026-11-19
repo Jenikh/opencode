@@ -57,7 +57,9 @@ const description = (shell?: string, codeMode = false) =>
 
 const timeoutInput = (foreground: number) =>
   Schema.optionalKey(NonNegativeInt).annotate({
-    description: `Optional timeout in milliseconds (default ${foreground}). When it expires, a foreground command moves to the background and a background command is stopped.`,
+    description:
+      `Optional timeout in milliseconds (default ${foreground}). Set to 0 to wait for a foreground command to exit. ` +
+      "When a nonzero timeout expires, foreground commands move to the background and background commands are stopped.",
   })
 
 export const Input = Schema.Struct({
@@ -401,9 +403,9 @@ export const Plugin = {
           execute: (input, context) => {
             // Code Mode input has no background parameter.
             const background = "background" in input && input.background === true
-            // A foreground timeout of 0 falls back to the default, so a call can't block until the command exits.
+            // A foreground timeout of 0 waits for the command to exit instead of promoting it to the background.
             const configuredTimeout = Config.latest(loaded.entries, "shell_background_after") ?? DEFAULT_TIMEOUT_MS
-            const foreground = input.timeout || configuredTimeout
+            const foreground = input.timeout ?? configuredTimeout
             const timeout = background ? (input.timeout ?? 0) : foreground
             let finalTimeout = timeout
             // Uninterruptible from spawning to blocking, so an interrupt cannot orphan a started command.

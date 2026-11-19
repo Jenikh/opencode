@@ -1606,30 +1606,17 @@ describe("ShellTool", () => {
     }),
   )
 
-  it.effect("treats a foreground timeout of zero as the default timeout", () =>
+  configuredIt.live("waits for a foreground command when timeout is zero", () =>
     withTempDir((tmp) => {
       reset()
       return withSession(tmp.path, (registry) =>
         Effect.gen(function* () {
-          const running = yield* executeTool(
-            registry,
-            call({ command: progressOverflowCommand(0, "release"), timeout: 0 }, "call-zero-timeout"),
-          ).pipe(Effect.forkScoped({ startImmediately: true }))
-          // The wait starts only after the command spawns, so keep advancing the clock until the call returns.
-          const result = yield* Fiber.join(running).pipe(
-            Effect.raceFirst(
-              Effect.forever(Effect.promise(() => Bun.sleep(20)).pipe(Effect.andThen(TestClock.adjust("30 seconds")))),
-            ),
-          )
-          expect(result.content?.[0]).toMatchObject({
-            type: "text",
-            text: expect.stringContaining("did not finish within its timeout of 30 seconds"),
-          })
-          const id = ID.make(String(result.metadata?.shellID))
-          const shell = yield* Shell.Service
-          expect((yield* shell.get(id)).status).toBe("running")
-          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
-          expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+          const command = isWindows
+            ? "Start-Sleep -Milliseconds 150; [Console]::Out.Write('done')"
+            : "sleep 0.15; printf done"
+          const result = yield* executeTool(registry, call({ command, timeout: 0 }, "call-zero-timeout"))
+          expect(result.output).toMatchObject({ output: "done", exitCode: 0 })
+          expect(result.metadata).not.toHaveProperty("shellID")
         }),
       )
     }),

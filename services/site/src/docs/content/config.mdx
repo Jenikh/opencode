@@ -132,8 +132,9 @@ Set the shell used by the terminal and shell tools. Set
 `shell_background_after` to control how long a foreground shell command may
 run before OpenCode returns control and keeps it running in the background.
 The default is `30000` milliseconds. Set it to `0` to disable automatic
-backgrounding. A nonzero per-call `timeout` overrides this threshold, and the
-setting also applies to Code Mode shell calls.
+backgrounding. A nonzero per-call `timeout` overrides this threshold. Set
+`timeout: 0` on a foreground call to wait until it exits; the setting also
+applies to Code Mode shell calls.
 
 ```jsonc
 {
