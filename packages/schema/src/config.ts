@@ -3,7 +3,7 @@ export * as Config from "./config.js"
 import { Schema } from "effect"
 import { ephemeral, inventory } from "./event.js"
 import { Permission } from "./permission.js"
-import { AbsolutePath, optional } from "./schema.js"
+import { AbsolutePath, NonNegativeInt, optional } from "./schema.js"
 import { ConfigAgent } from "./config/agent.js"
 import { ConfigMedia } from "./config/media.js"
 import { ConfigCompaction } from "./config/compaction.js"
@@ -30,8 +30,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   shell: Schema.String.pipe(optional).annotate({
     description: "Default shell to use for terminal and shell tool execution",
   }),
-  shell_background_after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional).annotate({
-    description: "Automatically move foreground shell commands to the background after this many milliseconds (default: 30000)",
+  shell_background_after: NonNegativeInt.pipe(optional).annotate({
+    description:
+      "Automatically move foreground shell commands to the background after this many milliseconds (default: 30000)",
   }),
   model: ConfigModel.Selection.pipe(optional).annotate({
     description: "Default model to use when no session or agent model is selected",
