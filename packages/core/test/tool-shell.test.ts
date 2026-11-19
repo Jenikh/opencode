@@ -1547,6 +1547,22 @@ describe("ShellTool", () => {
     }),
   )
 
+  configuredIt.live("honors a per-call timeout over the configured background threshold", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const command = isWindows
+            ? "Start-Sleep -Milliseconds 150; [Console]::Out.Write('done')"
+            : "sleep 0.15; printf done"
+          const result = yield* executeTool(registry, call({ command, timeout: 1_000 }, "call-explicit-shell-timeout"))
+          expect(result.output).toMatchObject({ output: "done", exitCode: 0 })
+          expect(result.metadata).not.toHaveProperty("shellID")
+        }),
+      )
+    }),
+  )
+
   it.live("returns a fast foreground result directly", () =>
     withTempDir((tmp) => {
       reset()
