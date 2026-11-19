@@ -30,6 +30,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   shell: Schema.String.pipe(optional).annotate({
     description: "Default shell to use for terminal and shell tool execution",
   }),
+  shell_background_after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional).annotate({
+    description: "Automatically move foreground shell commands to the background after this many milliseconds (default: 30000)",
+  }),
   model: ConfigModel.Selection.pipe(optional).annotate({
     description: "Default model to use when no session or agent model is selected",
   }),

@@ -907,7 +907,7 @@ describe("ShellTool", () => {
             (namespace) => namespace.entries,
           )
           expect(pinned.map((entry) => entry.path)).toEqual(["shell"])
-          expect(pinned[0]!.line).toContain("600000")
+          expect(pinned[0]!.line).toContain("30000")
           expect(pinned[0]!.line).toContain("Execute a shell command and return its output.")
           // No background parameter in Code Mode.
           expect(pinned[0]!.line).not.toContain("background?: boolean")
@@ -954,7 +954,7 @@ describe("ShellTool", () => {
             outputPath: expect.any(String),
             wallTimeSeconds: expect.any(Number),
           })
-          expect(timeouts.toSorted((a, b) => a - b)).toEqual([10, 600_000])
+          expect(timeouts.toSorted((a, b) => a - b)).toEqual([10, 30_000])
           yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
           expect((yield* Fiber.join(notice)).valueOrUndefined?.data.item.payload).toMatchObject({
             text: expect.stringContaining("xxxxxx"),
@@ -1571,7 +1571,7 @@ describe("ShellTool", () => {
           )
           expect(result.content?.[0]).toMatchObject({
             type: "text",
-            text: expect.stringContaining("did not finish within its timeout of 120 seconds"),
+            text: expect.stringContaining("did not finish within its timeout of 30 seconds"),
           })
           const id = ID.make(String(result.metadata?.shellID))
           const shell = yield* Shell.Service
