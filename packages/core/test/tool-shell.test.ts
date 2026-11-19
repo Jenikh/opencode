@@ -183,6 +183,13 @@ const productionIt = testEffect(AppNodeBuilder.build(nodes, replacements).pipe(L
 const shellLayer = AppNodeBuilder.build(nodes, [...replacements, PluginSupervisor.node.replace(shellPluginSupervisor)])
 const it = testEffect(shellLayer.pipe(Layer.provideMerge(noFlagOverrides)))
 const codeModeIt = testEffect(shellLayer.pipe(Layer.provide(Layer.succeed(Flag.Overrides, "full_codemode"))))
+const thresholdIt = testEffect(
+  AppNodeBuilder.build(nodes, [
+    ...replacements,
+    Config.node.replace(Config.testLayer([{ type: "document", info: { shell_background_after: 50 } }])),
+    PluginSupervisor.node.replace(shellPluginSupervisor),
+  ]).pipe(Layer.provide(noFlagOverrides)),
+)
 // On the real process daemon (when its binary is compatible; otherwise this falls back to spawning).
 const daemonIt = testEffect(
   AppNodeBuilder.build(nodes, [...daemonReplacements, PluginSupervisor.node.replace(shellPluginSupervisor)]).pipe(
@@ -1572,6 +1579,35 @@ describe("ShellTool", () => {
           expect(result.content?.[0]).toMatchObject({
             type: "text",
             text: expect.stringContaining("did not finish within its timeout of 30 seconds"),
+          })
+          const id = ID.make(String(result.metadata?.shellID))
+          const shell = yield* Shell.Service
+          expect((yield* shell.get(id)).status).toBe("running")
+          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
+          expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+        }),
+      )
+    }),
+  )
+
+  thresholdIt.effect("uses shell_background_after for a zero foreground timeout", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const running = yield* executeTool(
+            registry,
+            call({ command: progressOverflowCommand(0, "release"), timeout: 0 }, "call-configured-timeout"),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
+          // The wait starts only after the command spawns, so keep advancing the clock until the call returns.
+          const result = yield* Fiber.join(running).pipe(
+            Effect.raceFirst(
+              Effect.forever(Effect.promise(() => Bun.sleep(20)).pipe(Effect.andThen(TestClock.adjust("1 second")))),
+            ),
+          )
+          expect(result.content?.[0]).toMatchObject({
+            type: "text",
+            text: expect.stringContaining("did not finish within its timeout of 0.05 seconds"),
           })
           const id = ID.make(String(result.metadata?.shellID))
           const shell = yield* Shell.Service
