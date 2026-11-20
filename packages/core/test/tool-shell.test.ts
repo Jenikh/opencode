@@ -38,7 +38,7 @@ import { PluginSupervisor } from "@opencode/core/plugin/supervisor"
 import { Shell } from "@opencode/core/shell"
 import { ShellSelect } from "@opencode/core/shell/select"
 import { ShellResult } from "@opencode/core/shell/result"
-import { ID } from "@opencode/schema/shell"
+import { Event, ID } from "@opencode/schema/shell"
 import { ShellTool } from "@opencode/core/tool/plugin/shell"
 import { ToolOutput } from "@opencode/core/tool-output"
 import { Tool } from "@opencode/core/tool"
@@ -187,6 +187,13 @@ const thresholdIt = testEffect(
   AppNodeBuilder.build(nodes, [
     ...replacements,
     Config.node.replace(Config.testLayer([{ type: "document", info: { shell_background_after: 50 } }])),
+    PluginSupervisor.node.replace(shellPluginSupervisor),
+  ]).pipe(Layer.provide(noFlagOverrides)),
+)
+const disabledThresholdIt = testEffect(
+  AppNodeBuilder.build(nodes, [
+    ...replacements,
+    Config.node.replace(Config.testLayer([{ type: "document", info: { shell_background_after: 0 } }])),
     PluginSupervisor.node.replace(shellPluginSupervisor),
   ]).pipe(Layer.provide(noFlagOverrides)),
 )
@@ -1614,6 +1621,37 @@ describe("ShellTool", () => {
           expect((yield* shell.get(id)).status).toBe("running")
           yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
           expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+        }),
+      )
+    }),
+  )
+
+  disabledThresholdIt.effect("keeps automatic backgrounding disabled when shell_background_after is zero", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const timeouts: number[] = []
+          const hooks = yield* PluginHooks.Service
+          yield* hooks.register("shell", "create.before", (event) =>
+            Effect.sync(() => {
+              timeouts.push(event.timeout)
+            }),
+          )
+          const bus = yield* Bus.Service
+          const created = yield* bus.subscribe(Event.Created).pipe(
+            Stream.filter((event) => event.data.info.command.includes("release")),
+            Stream.runHead,
+            Effect.forkScoped({ startImmediately: true }),
+          )
+          const running = yield* executeTool(
+            registry,
+            call({ command: progressOverflowCommand(0, "release"), timeout: 0 }, "call-disabled-threshold"),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
+          expect((yield* Fiber.join(created)).valueOrUndefined?.data.info.command).toContain("release")
+          expect(timeouts).toEqual([0])
+          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
+          expect((yield* Fiber.join(running)).status).toBe("completed")
         }),
       )
     }),
