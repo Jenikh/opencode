@@ -1650,6 +1650,14 @@ describe("ShellTool", () => {
           ).pipe(Effect.forkScoped({ startImmediately: true }))
           expect((yield* Fiber.join(created)).valueOrUndefined?.data.info.command).toContain("release")
           expect(timeouts).toEqual([0])
+          const waiting = yield* Fiber.join(running).pipe(
+            Effect.timeoutOption(Duration.seconds(31)),
+            Effect.forkScoped({ startImmediately: true }),
+          )
+          // The created event precedes the tool's wait setup; let it register before advancing the test clock.
+          yield* Effect.promise(() => Bun.sleep(20))
+          yield* TestClock.adjust("31 seconds")
+          expect((yield* Fiber.join(waiting))._tag).toBe("None")
           yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
           expect((yield* Fiber.join(running)).status).toBe("completed")
         }),
