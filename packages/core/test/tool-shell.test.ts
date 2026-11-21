@@ -1626,6 +1626,42 @@ describe("ShellTool", () => {
     }),
   )
 
+  thresholdIt.effect("lets an explicit timeout override shell_background_after", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const timeouts: number[] = []
+          const hooks = yield* PluginHooks.Service
+          yield* hooks.register("shell", "create.before", (event) =>
+            Effect.sync(() => {
+              timeouts.push(event.timeout)
+            }),
+          )
+          const running = yield* executeTool(
+            registry,
+            call({ command: progressOverflowCommand(0, "release"), timeout: 10 }, "call-explicit-timeout"),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
+          const result = yield* Fiber.join(running).pipe(
+            Effect.raceFirst(
+              Effect.forever(Effect.promise(() => Bun.sleep(20)).pipe(Effect.andThen(TestClock.adjust("1 second")))),
+            ),
+          )
+          expect(result.content?.[0]).toMatchObject({
+            type: "text",
+            text: expect.stringContaining("did not finish within its timeout of 0.01 seconds"),
+          })
+          expect(timeouts).toEqual([10])
+          const id = ID.make(String(result.metadata?.shellID))
+          const shell = yield* Shell.Service
+          expect((yield* shell.get(id)).status).toBe("running")
+          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
+          expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+        }),
+      )
+    }),
+  )
+
   disabledThresholdIt.effect("keeps automatic backgrounding disabled when shell_background_after is zero", () =>
     withTempDir((tmp) => {
       reset()
