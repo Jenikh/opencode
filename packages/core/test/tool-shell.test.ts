@@ -38,7 +38,7 @@ import { PluginSupervisor } from "@opencode/core/plugin/supervisor"
 import { Shell } from "@opencode/core/shell"
 import { ShellSelect } from "@opencode/core/shell/select"
 import { ShellResult } from "@opencode/core/shell/result"
-import { ID } from "@opencode/schema/shell"
+import { Event, ID } from "@opencode/schema/shell"
 import { ShellTool } from "@opencode/core/tool/plugin/shell"
 import { ToolOutput } from "@opencode/core/tool-output"
 import { Tool } from "@opencode/core/tool"
@@ -183,6 +183,20 @@ const productionIt = testEffect(AppNodeBuilder.build(nodes, replacements).pipe(L
 const shellLayer = AppNodeBuilder.build(nodes, [...replacements, PluginSupervisor.node.replace(shellPluginSupervisor)])
 const it = testEffect(shellLayer.pipe(Layer.provideMerge(noFlagOverrides)))
 const codeModeIt = testEffect(shellLayer.pipe(Layer.provide(Layer.succeed(Flag.Overrides, "full_codemode"))))
+const thresholdIt = testEffect(
+  AppNodeBuilder.build(nodes, [
+    ...replacements,
+    Config.node.replace(Config.testLayer([{ type: "document", info: { shell_background_after: 50 } }])),
+    PluginSupervisor.node.replace(shellPluginSupervisor),
+  ]).pipe(Layer.provide(noFlagOverrides)),
+)
+const disabledThresholdIt = testEffect(
+  AppNodeBuilder.build(nodes, [
+    ...replacements,
+    Config.node.replace(Config.testLayer([{ type: "document", info: { shell_background_after: 0 } }])),
+    PluginSupervisor.node.replace(shellPluginSupervisor),
+  ]).pipe(Layer.provide(noFlagOverrides)),
+)
 // On the real process daemon (when its binary is compatible; otherwise this falls back to spawning).
 const daemonIt = testEffect(
   AppNodeBuilder.build(nodes, [...daemonReplacements, PluginSupervisor.node.replace(shellPluginSupervisor)]).pipe(
@@ -1578,6 +1592,110 @@ describe("ShellTool", () => {
           expect((yield* shell.get(id)).status).toBe("running")
           yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
           expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+        }),
+      )
+    }),
+  )
+
+  thresholdIt.effect("uses shell_background_after for a zero foreground timeout", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const running = yield* executeTool(
+            registry,
+            call({ command: progressOverflowCommand(0, "release"), timeout: 0 }, "call-configured-timeout"),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
+          // The wait starts only after the command spawns, so keep advancing the clock until the call returns.
+          const result = yield* Fiber.join(running).pipe(
+            Effect.raceFirst(
+              Effect.forever(Effect.promise(() => Bun.sleep(20)).pipe(Effect.andThen(TestClock.adjust("1 second")))),
+            ),
+          )
+          expect(result.content?.[0]).toMatchObject({
+            type: "text",
+            text: expect.stringContaining("did not finish within its timeout of 0.05 seconds"),
+          })
+          const id = ID.make(String(result.metadata?.shellID))
+          const shell = yield* Shell.Service
+          expect((yield* shell.get(id)).status).toBe("running")
+          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
+          expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+        }),
+      )
+    }),
+  )
+
+  thresholdIt.effect("lets an explicit timeout override shell_background_after", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const timeouts: number[] = []
+          const hooks = yield* PluginHooks.Service
+          yield* hooks.register("shell", "create.before", (event) =>
+            Effect.sync(() => {
+              timeouts.push(event.timeout)
+            }),
+          )
+          const running = yield* executeTool(
+            registry,
+            call({ command: progressOverflowCommand(0, "release"), timeout: 10 }, "call-explicit-timeout"),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
+          const result = yield* Fiber.join(running).pipe(
+            Effect.raceFirst(
+              Effect.forever(Effect.promise(() => Bun.sleep(20)).pipe(Effect.andThen(TestClock.adjust("1 second")))),
+            ),
+          )
+          expect(result.content?.[0]).toMatchObject({
+            type: "text",
+            text: expect.stringContaining("did not finish within its timeout of 0.01 seconds"),
+          })
+          expect(timeouts).toEqual([10])
+          const id = ID.make(String(result.metadata?.shellID))
+          const shell = yield* Shell.Service
+          expect((yield* shell.get(id)).status).toBe("running")
+          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
+          expect(yield* shell.wait(id)).toMatchObject({ status: "exited", exit: 0 })
+        }),
+      )
+    }),
+  )
+
+  disabledThresholdIt.effect("keeps automatic backgrounding disabled when shell_background_after is zero", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const timeouts: number[] = []
+          const hooks = yield* PluginHooks.Service
+          yield* hooks.register("shell", "create.before", (event) =>
+            Effect.sync(() => {
+              timeouts.push(event.timeout)
+            }),
+          )
+          const bus = yield* Bus.Service
+          const created = yield* bus.subscribe(Event.Created).pipe(
+            Stream.filter((event) => event.data.info.command.includes("release")),
+            Stream.runHead,
+            Effect.forkScoped({ startImmediately: true }),
+          )
+          const running = yield* executeTool(
+            registry,
+            call({ command: progressOverflowCommand(0, "release"), timeout: 0 }, "call-disabled-threshold"),
+          ).pipe(Effect.forkScoped({ startImmediately: true }))
+          expect((yield* Fiber.join(created)).valueOrUndefined?.data.info.command).toContain("release")
+          expect(timeouts).toEqual([0])
+          const waiting = yield* Fiber.join(running).pipe(
+            Effect.timeoutOption(Duration.seconds(31)),
+            Effect.forkScoped({ startImmediately: true }),
+          )
+          // The created event precedes the tool's wait setup; let it register before advancing the test clock.
+          yield* Effect.promise(() => Bun.sleep(20))
+          yield* TestClock.adjust("31 seconds")
+          expect((yield* Fiber.join(waiting))._tag).toBe("None")
+          yield* Effect.promise(() => Bun.write(path.join(tmp.path, "release"), ""))
+          expect((yield* Fiber.join(running)).status).toBe("completed")
         }),
       )
     }),
