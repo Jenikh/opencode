@@ -160,7 +160,7 @@ const fixture = (directory: string): Fixture => ({ directory, assertions: [], pr
 const connected = (machines: Machines.Interface, name: string) =>
   Effect.gen(function* () {
     const id = yield* machines.add(name)
-    const worker = yield* makeWorker({ environment: { id }, connect: machines.connect })
+    const worker = yield* makeWorker({ connect: (connection) => machines.connect(id, connection) })
     yield* worker.restore
     return { id, worker }
   })
@@ -222,6 +222,8 @@ off.effect("resolves a machine-shaped path exactly as a local path with the flag
       expect(target.resource).toBe("gpu:/work/a")
       expect(target.externalDirectory).toBeUndefined()
       expect(target.environment.id).toBe(Environment.localID)
+      // "Always" saves what it saves for any local file, never a rule for a machine named gpu.
+      expect(FileAccess.always(target)).toBe("*")
 
       // No machine's home is asked for either: `gpu:~` is a local folder like any other.
       const home = yield* access.resolve({ path: "gpu:~/x" })
@@ -357,7 +359,7 @@ on.effect("reads a file under the machine's home and asks approval for its resol
       })
       expect(tools.assertions.map((entry) => [entry.action, entry.resources, entry.save])).toEqual([
         ["external_directory", ["gpu:/home/worker/*"], ["gpu:/home/worker/*"]],
-        ["read", ["gpu:/home/worker/notes.txt"], ["*"]],
+        ["read", ["gpu:/home/worker/notes.txt"], ["gpu:*"]],
       ])
       expect(yield* Effect.promise(() => fs.readdir(tmp.path))).toEqual([])
     }).pipe(Effect.provide(graph(tools)))
@@ -401,9 +403,12 @@ on.effect("uses a rule for the machine's path, never one for the same path witho
 
       const read = tools.assertions.find((entry) => entry.action === "read")
       expect(read?.resources).toEqual(["gpu:/work/a.txt"])
-      expect(read?.save).toEqual(["*"])
+      expect(read?.save).toEqual(["gpu:*"])
 
       const allow = (resource: string) => [{ action: "read" as const, resource, effect: "allow" as const }]
+      expect(Permission.evaluate("read", "gpu:/work/a.txt", allow("gpu:*")).effect).toBe("allow")
+      expect(Permission.evaluate("read", "cpu:/work/a.txt", allow("gpu:*")).effect).toBe("ask")
+      expect(Permission.evaluate("read", "gpu:/work/a.txt", allow("*")).effect).toBe("ask")
       expect(Permission.evaluate("read", "gpu:/work/a.txt", allow("/work/*")).effect).toBe("ask")
       expect(Permission.evaluate("read", "gpu:/work/a.txt", allow("gpu:/work/*")).effect).toBe("allow")
       const external = (resource: string) => [
@@ -615,7 +620,9 @@ on.effect("refuses another user's home in a command on a machine", () =>
         call("shell", { command: "cd ~other/src", workdir: "gpu:/work" }),
       )
       expect(result.status).toBe("error")
-      expect(result.error?.message).toBe("A gpu path must be absolute or start with ~/, as in gpu:/work/file.")
+      expect(result.error?.message).toBe(
+        "Machine paths are absolute or start with ~/: write gpu:/… or gpu:~/… (for a local folder with that name, start with ./)",
+      )
       expect(tools.assertions.filter((entry) => entry.action === "external_directory")).toEqual([])
       expect(worker.runs).toEqual([])
     }).pipe(Effect.provide(graph(tools)))
@@ -723,8 +730,97 @@ on.effect("refuses another user's home on a machine and says what a machine path
       yield* connected(machines, "gpu")
       const result = yield* executeTool(yield* Tool.Service, call("read", { path: "gpu:~other/x" }))
       expect(result.status).toBe("error")
-      expect(result.error?.message).toBe("A gpu path must be absolute or start with ~/, as in gpu:/work/file.")
+      expect(result.error?.message).toBe(
+        "Machine paths are absolute or start with ~/: write gpu:/… or gpu:~/… (for a local folder with that name, start with ./)",
+      )
       expect(tools.assertions).toEqual([])
+    }).pipe(Effect.provide(graph(tools)))
+  }),
+)
+
+on.effect("refuses a relative machine path in a shell working directory, naming the fix", () =>
+  withTempDir((tmp) => {
+    const tools = fixture(tmp.path)
+    return Effect.gen(function* () {
+      const machines = yield* Machines.Service
+      const { worker } = yield* connected(machines, "gpu")
+      const result = yield* executeTool(
+        yield* Tool.Service,
+        call("shell", { command: "pwd", workdir: "gpu:machines-test" }),
+      )
+      expect(result.status).toBe("error")
+      expect(result.error?.message).toBe(
+        "Machine paths are absolute or start with ~/: write gpu:/… or gpu:~/… (for a local folder with that name, start with ./)",
+      )
+      expect(tools.assertions).toEqual([])
+      expect(worker.runs).toEqual([])
+    }).pipe(Effect.provide(graph(tools)))
+  }),
+)
+
+on.effect("refuses a relative machine path in a file tool, naming the fix", () =>
+  withTempDir((tmp) => {
+    const tools = fixture(tmp.path)
+    return Effect.gen(function* () {
+      const machines = yield* Machines.Service
+      yield* connected(machines, "gpu")
+      const result = yield* executeTool(yield* Tool.Service, call("read", { path: "gpu:notes.txt" }))
+      expect(result.status).toBe("error")
+      expect(result.error?.message).toBe(
+        "Machine paths are absolute or start with ~/: write gpu:/… or gpu:~/… (for a local folder with that name, start with ./)",
+      )
+      expect(tools.assertions).toEqual([])
+    }).pipe(Effect.provide(graph(tools)))
+  }),
+)
+
+on.effect("keeps a relative machine-shaped path local when no machine has that name", () =>
+  withTempDir((tmp) => {
+    const tools = fixture(tmp.path)
+    return Effect.gen(function* () {
+      const result = yield* executeTool(
+        yield* Tool.Service,
+        call("shell", { command: "pwd", workdir: "gpu:machines-test" }),
+      )
+      expect(result.status).toBe("error")
+      expect(result.error?.message).toBe(
+        `Working directory does not exist: ${path.join(tmp.path, "gpu:machines-test")}`,
+      )
+    }).pipe(Effect.provide(graph(tools)))
+  }),
+)
+
+off.effect("keeps a relative machine-shaped path local with the flag off, even when that machine exists", () =>
+  withTempDir((tmp) => {
+    const tools = fixture(tmp.path)
+    return Effect.gen(function* () {
+      const machines = yield* Machines.Service
+      yield* connected(machines, "gpu")
+      const result = yield* executeTool(
+        yield* Tool.Service,
+        call("shell", { command: "pwd", workdir: "gpu:machines-test" }),
+      )
+      expect(result.status).toBe("error")
+      expect(result.error?.message).toBe(
+        `Working directory does not exist: ${path.join(tmp.path, "gpu:machines-test")}`,
+      )
+    }).pipe(Effect.provide(graph(tools)))
+  }),
+)
+
+on.effect("names the machine when its working directory does not exist", () =>
+  withTempDir((tmp) => {
+    const tools = fixture(tmp.path)
+    return Effect.gen(function* () {
+      const machines = yield* Machines.Service
+      const { worker } = yield* connected(machines, "gpu")
+      const result = yield* executeTool(
+        yield* Tool.Service,
+        call("shell", { command: "pwd", workdir: "gpu:/no/such/dir" }),
+      )
+      expect(result.status).toBe("error")
+      expect(result.error?.message).toBe("Working directory does not exist on gpu: /no/such/dir")
+      expect(worker.runs).toEqual([])
     }).pipe(Effect.provide(graph(tools)))
   }),
 )

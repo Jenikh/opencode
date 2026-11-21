@@ -31,7 +31,7 @@ export class Info extends Schema.Class<Info>("Config.Info")({
     description: "Default shell to use for terminal and shell tool execution",
   }),
   shell_background_after: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(optional).annotate({
-    description: "Automatically move foreground shell commands to the background after this many milliseconds (default: 30000)",
+    description: "Automatically move foreground shell commands to the background after this many milliseconds (default: 30000; 0 disables automatic backgrounding)",
   }),
   model: ConfigModel.Selection.pipe(optional).annotate({
     description: "Default model to use when no session or agent model is selected",
@@ -57,6 +57,10 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   timezone: Schema.String.pipe(optional).annotate({
     description: "IANA time zone for schedules, e.g. America/Los_Angeles. Defaults to the server's local zone",
+  }),
+  automations: Schema.Boolean.pipe(optional).annotate({
+    description:
+      "Run prompts, shell commands or Code Mode actions on a timer, on a cron schedule, or on push events from connected MCP servers. Defaults to true; set false to disable. MCP events still require experimental.mcp_events.",
   }),
   permissions: Permission.Ruleset.pipe(optional).annotate({
     description: "Ordered tool permission rules applied to agent tool use",
