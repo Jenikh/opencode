@@ -1605,6 +1605,9 @@ story("keeps a page note editable beside a tiny viewport and attaches it to the 
   await editor.click()
   await editor.fill("Check the header layout")
   await addPage(page, root)
+  // The menu gives the keyboard back to its button a task after it closes, and would take it from an editor focused
+  // in that task: the Enter below would then open the menu again.
+  await expect(root.getByRole("button", { name: "Browser options", exact: true })).toBeFocused()
   await expect(editor).toHaveValue("Check the header layout")
   await editor.press("Enter")
   await expect(root.getByTestId("fixture-comments").getByRole("listitem")).toHaveText([/: Check the header layout$/])
@@ -1617,6 +1620,8 @@ story("adds the whole page to the session and keeps the draft when the button is
   await editor.click()
   await editor.fill("Check the header layout")
   await addPage(page, root)
+  // As above: the menu's button has the keyboard again before the editor takes it.
+  await expect(root.getByRole("button", { name: "Browser options", exact: true })).toBeFocused()
   await expect(editor).toHaveValue("Check the header layout")
   await editor.press("Enter")
   await expect(root.getByTestId("fixture-comments").getByRole("listitem")).toHaveText([/: Check the header layout$/])
@@ -1627,9 +1632,10 @@ story("shows the page's cookies in the site information and clears them", async 
   await root.getByRole("button", { name: "Site information", exact: true }).click()
   const site = page.getByRole("dialog")
   await site.getByRole("button", { name: "Site settings", exact: true }).click()
-  await expect(site).toContainText("3 cookies in use")
+  // The row is "Cookies and site data", so its count needs no more words.
+  await expect(site.getByText("3 cookies", { exact: true })).toBeVisible()
   await site.getByRole("button", { name: "Clear", exact: true }).click()
-  await expect(site).toContainText("0 cookies in use")
+  await expect(site.getByText("0 cookies", { exact: true })).toBeVisible()
 })
 
 story("site information opens on the site and its connection, with the rest one step away", async ({ page }) => {
@@ -1639,19 +1645,19 @@ story("site information opens on the site and its connection, with the rest one 
   // First: where the person is and whether the connection is private. Nothing about cookies or agents yet.
   await expect(site).toContainText("alpha.example")
   await expect(site).toContainText("Connection is secure")
-  await expect(site).not.toContainText("cookies in use")
+  await expect(site).not.toContainText(/cookie/i)
   const settings = site.getByRole("button", { name: "Site settings", exact: true })
   await settings.click()
   // Second: everything else, with the way back holding the keyboard.
   await expect(site.getByRole("button", { name: "Back", exact: true })).toBeFocused()
-  await expect(site).toContainText("3 cookies in use")
+  await expect(site.getByText("3 cookies", { exact: true })).toBeVisible()
   await expect(site).toContainText("You stay signed in.")
   await expect(site.getByRole("button", { name: "Clear saved files for this site", exact: true })).toBeEnabled()
   await expect(site).toContainText("Agents you allow can use this page")
   // Escape steps back one view, then closes.
   await page.keyboard.press("Escape")
   await expect(settings).toBeFocused()
-  await expect(site).not.toContainText("cookies in use")
+  await expect(site).not.toContainText(/cookie/i)
   await page.keyboard.press("Escape")
   await expect(site).toBeHidden()
 })
@@ -1662,11 +1668,11 @@ story("says a failed cookie read failed and reads again on retry", async ({ page
   await root.getByRole("button", { name: "Site information", exact: true }).click()
   const site = page.getByRole("dialog")
   await site.getByRole("button", { name: "Site settings", exact: true }).click()
-  await expect(site).toContainText("Couldn't read this site's cookies.")
+  await expect(site.getByText("Could not read site data.", { exact: true })).toBeVisible()
   const retry = site.getByRole("button", { name: "Try again", exact: true })
   await expect(retry).toBeEnabled()
   await retry.click()
-  await expect(site).toContainText("3 cookies in use")
+  await expect(site.getByText("3 cookies", { exact: true })).toBeVisible()
   await expect(site.getByRole("button", { name: "Clear", exact: true })).toBeEnabled()
 })
 
@@ -1771,6 +1777,8 @@ story("restores the full pane when the toolbar closes and keeps the selected dev
     "Laptop",
     "Desktop",
   ])
+  // The rows show before the menu has the keyboard: until its first row is focused, a key still goes to the trigger.
+  await expect(option("Responsive")).toBeFocused()
   await page.keyboard.press("End")
   await expect(moreDevices).toBeFocused()
   await page.keyboard.press("ArrowRight")
