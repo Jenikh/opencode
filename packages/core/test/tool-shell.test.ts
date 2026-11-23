@@ -151,6 +151,7 @@ const shellPluginSupervisor = makeLocationNode({
     Shell.node,
     Shell.daemonNode,
     ShellSelect.node,
+    Bus.node,
     Tool.node,
   ],
 })
@@ -188,7 +189,12 @@ const codeModeIt = testEffect(shellLayer.pipe(Layer.provide(Layer.succeed(Flag.O
 const thresholdIt = testEffect(
   AppNodeBuilder.build(nodes, [
     ...replacements,
-    Config.node.replace(Config.testLayer([{ type: "document", info: { shell_background_after: 50 } }])),
+    Config.node.replace(
+      Config.testLayer([
+        { type: "document", info: { shell_background_after: 100 } },
+        { type: "document", info: { shell_background_after: 50 } },
+      ]),
+    ),
     PluginSupervisor.node.replace(shellPluginSupervisor),
   ]).pipe(Layer.provide(noFlagOverrides)),
 )
@@ -1467,6 +1473,7 @@ describe("ShellTool", () => {
             Shell.node,
             Shell.daemonNode,
             ShellSelect.node,
+            Bus.node,
             Tool.node,
           ],
         })
@@ -1738,7 +1745,7 @@ describe("ShellTool", () => {
   )
 
 
-  thresholdIt.effect("uses shell_background_after for a zero foreground timeout", () =>
+  thresholdIt.effect("uses the highest-priority shell_background_after for a zero foreground timeout", () =>
     withTempDir((tmp) => {
       reset()
       return withSession(tmp.path, (registry) =>

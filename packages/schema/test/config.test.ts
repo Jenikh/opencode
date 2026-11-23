@@ -147,7 +147,6 @@ describe("Config.Entry", () => {
     ])
   })
 
-
   test("round-trips shell_background_after and rejects negative values", () => {
     const decode = Schema.decodeUnknownSync(Config.Info)
     for (const value of [0, 50]) {
