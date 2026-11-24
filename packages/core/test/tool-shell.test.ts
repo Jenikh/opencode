@@ -1875,6 +1875,27 @@ describe("ShellTool", () => {
     }),
   )
 
+  thresholdCodeModeIt.live("keeps configured automation timeouts foreground-only", () =>
+    withTempDir((tmp) => {
+      reset()
+      return withSession(tmp.path, (registry) =>
+        Effect.gen(function* () {
+          const result = yield* runAutomationCode(
+            registry,
+            `try { await tools.shell({ command: ${JSON.stringify(idleCommand)} }); return "finished" }
+             catch (error) { return error.message }`,
+          )
+          expect(result).toMatchObject({
+            ok: true,
+            value: expect.stringContaining("Command timed out after 0.05 seconds"),
+          })
+          const shell = yield* Shell.Service
+          expect(yield* shell.list()).toEqual([])
+        }),
+      )
+    }),
+  )
+
   it.live("still cancels a timeout-promoted shell through its existing job handle", () =>
     withTempDir((tmp) => {
       reset()

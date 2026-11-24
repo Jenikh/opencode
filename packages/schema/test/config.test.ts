@@ -147,6 +147,15 @@ describe("Config.Entry", () => {
     ])
   })
 
+  test("round-trips shell_background_after and rejects negative values", () => {
+    const decode = Schema.decodeUnknownSync(Config.Info)
+    for (const value of [0, 50]) {
+      const input = { shell_background_after: value }
+      expect(Schema.encodeSync(Config.Info)(decode(input))).toEqual(input)
+    }
+    expect(() => decode({ shell_background_after: -1 })).toThrow()
+  })
+
   test("has a stable public identifier", () => {
     expect(Config.Entry.ast.annotations?.identifier).toBe("Config.Entry")
   })
