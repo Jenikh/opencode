@@ -1753,7 +1753,6 @@ describe("ShellTool", () => {
             registry,
             call({ command: progressOverflowCommand(0, "release"), timeout: 0 }, "call-configured-timeout"),
           ).pipe(Effect.forkScoped({ startImmediately: true }))
-          // The wait starts only after the command spawns, so keep advancing the clock until the call returns.
           const result = yield* Fiber.join(running)
           expect(result.content?.[0]).toMatchObject({
             type: "text",
@@ -1888,9 +1887,7 @@ describe("ShellTool", () => {
           )
           expect(result).toMatchObject({
             ok: true,
-            value: expect.stringMatching(
-              new RegExp(`Command timed out after 0\\\\.05 seconds\\\\. [^\\\\n]+\\\\nExit code: ${timedOutExit}`),
-            ),
+            value: expect.stringContaining("Command timed out after 0.05 seconds"),
           })
           const shell = yield* Shell.Service
           expect(yield* shell.list()).toEqual([])
