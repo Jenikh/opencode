@@ -2,5 +2,52 @@
   "schema_version": 1,
   "description": "Harness-improvement memory. Records are shared across sessions and policy/optimizer model switches; preserve history rather than overwriting it.",
   "source_paper": "https://arxiv.org/abs/2611.18856",
-  "records": []
+  "records": [
+    {
+      "id": "sim-20261127-bootstrap-01",
+      "timestamp": "2026-11-27T19:24:00+01:00",
+      "provenance": {
+        "policy_model": null,
+        "policy_provider": null,
+        "optimizer_model": "GPT-6",
+        "optimizer_provider": "OpenAI",
+        "task_domain": "harness-memory-and-governance",
+        "benchmark_or_workflow": "SIM bootstrap implementation on Jenikh/opencode",
+        "iteration_round": 1
+      },
+      "root_cause": {
+        "hypothesis": "The repository had no persistent, structured record of why harness changes were proposed or what happened after execution, so later sessions or model/provider switches could repeat failed approaches or overlook existing protections.",
+        "evidence": [
+          "The dev branch contained AGENTS.md and OpenCode command definitions but no .opencode/sim-memory.json or SIM workflow.",
+          "The existing AGENTS.md documented important runtime invariants but did not require querying a causal experiment history before changing harness behavior."
+        ],
+        "confidence": "high"
+      },
+      "rationale": "A Git-tracked, model-independent JSON history plus mandatory AGENTS.md lookup/append rules and a /sim command preserves causal context, makes prior failures searchable, and places guardrail review before risky harness edits.",
+      "predicted_outcome": {
+        "expected_behavior": "The sim-memory branch will contain a structured SIM store, a reusable /sim query/add/update command, and repository-wide instructions requiring pre-change memory review and post-experiment records.",
+        "verification_criteria": [
+          "Fetch all three changed paths from the sim-memory branch.",
+          "Parse .opencode/sim-memory.json as valid JSON and confirm schema_version and records are present.",
+          "Confirm AGENTS.md retains its existing guidance and adds the required lookup, guardrail-preservation, prediction, and post-experiment recording workflow.",
+          "Confirm .opencode/command/sim.md documents query, append, update, required fields, and allowed statuses."
+        ]
+      },
+      "observed_outcome": {
+        "result": "All three files were created or updated on the sim-memory branch and then fetched back successfully. The JSON parsed successfully; AGENTS.md contains its prior repository guidance plus the SIM workflow; the /sim command documents query, add, and update behavior.",
+        "verification": [
+          "GitHub create/update file operations returned commit SHAs.",
+          "Fetched AGENTS.md, .opencode/sim-memory.json, and .opencode/command/sim.md from sim-memory.",
+          "JSON.parse succeeded on the fetched SIM store."
+        ],
+        "regressions": [],
+        "deadlocks_or_timeouts": [],
+        "side_effects": [
+          "Changes are isolated on the sim-memory branch; dev was not modified.",
+          "The /sim command has not yet been executed inside a local OpenCode runtime."
+        ]
+      },
+      "status": "verified"
+    }
+  ]
 }
