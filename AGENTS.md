@@ -219,3 +219,34 @@ const table = sqliteTable("session", {
 - Keep delivery vocabulary explicit. Prompts steer by default. At safe step boundaries, steered compaction takes priority up to the first steered move control; other steers retain enqueue order. At an idle boundary, steers take priority; otherwise exactly one queued item delivers before the runner reevaluates continuation. Inbox items may be cancelled or changed between queue and steer before delivery. Promoting new user input resets the selected agent's step allowance; a batch of steers resets it once.
 - One step is one logical LLM call; its durable record covers only the model-visible span. Do not write "provider turn", and do not use bare "turn" for a single call: "turn" is reserved for the future assistant-turn unit containing all steps from prompt promotion until the session would go idle.
 - Keep event replay ownership separate from clustered Session execution ownership.
+
+
+## Self-Improvement Memory (SIM)
+
+The repository maintains a version-controlled harness-improvement history in `.opencode/sim-memory.json`. This memory belongs to the harness optimizer, not to any task-solving model, so it must remain readable and reusable across model/provider switches and sessions.
+
+### Before changing harness behavior
+
+Before modifying harness rules, middleware, permissions, verification gates, interlocks, tool execution, command lifecycle, or other agent tooling:
+
+1. Read `.opencode/sim-memory.json` and query it for matching task domains, workflow names, error signatures, root-cause hypotheses, affected files, and tags. Include both active records and historical `verified`, `reverted`, and `superseded` records; failed or superseded attempts are important evidence.
+2. Inspect every matching `active_guardrail` record and the relevant code/tests. Preserve existing verification, permission, cancellation, timeout, and interlock checks unless the task explicitly requires changing them and the change is independently justified.
+3. Compare the current proposal with prior rationales and predicted-versus-observed outcomes. Do not repeat a failed approach without explaining what materially differs.
+4. Before executing a proposed harness change, write down its predicted behavior and objective verification criteria. Keep the prediction separate from the observed result.
+
+### After every harness experiment
+
+After completing, abandoning, or failing a relevant task or experiment, append a SIM record to `.opencode/sim-memory.json`. Record failed attempts as well as successful ones. Every record must include:
+
+- `id`, `timestamp` (ISO 8601 with timezone), and `provenance`: policy model/provider, optimizer model/provider when known, task domain, benchmark or workflow, and iteration round.
+- `root_cause`: a falsifiable explanation of the underlying failure or behavior, with evidence and confidence. Do not record only symptoms.
+- `rationale`: why the proposed harness, middleware, rule, or tooling change should address that cause.
+- `predicted_outcome`: expected behavior and verification criteria written before testing.
+- `observed_outcome`: actual test/execution results, including regressions, deadlocks, timeouts, permission changes, cancellation behavior, and other side effects. State explicitly when verification was not run.
+- `status`: exactly one of `verified`, `reverted`, `superseded`, or `active_guardrail`.
+
+Preserve old records. Append a new record instead of rewriting history; use `superseded` when a later record replaces an earlier conclusion and `reverted` when the associated change was rolled back. Use `active_guardrail` only for an invariant or protection that should continue constraining future changes. A record is not `verified` merely because code was written or reviewed.
+
+Keep provenance accurate when the model/provider changes. Do not attribute a result to a model that did not produce it. Never invent benchmark scores, test runs, timestamps, or observations. If a value is unknown, use `null` and explain the limitation in the relevant field.
+
+Use the `/sim` command to search, append, or update SIM history. Validate the JSON after editing and preserve all existing records.
