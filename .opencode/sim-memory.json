@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "description": "Harness-improvement memory. Records are shared across sessions and policy/optimizer model switches; preserve history rather than overwriting it.",
+  "source_paper": "https://arxiv.org/abs/2611.18856",
+  "records": []
+}
